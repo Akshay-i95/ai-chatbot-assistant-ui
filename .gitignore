@@ -1,0 +1,137 @@
+# Environment Variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Node.js / React
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log*
+.pnpm-store/
+*.tgz
+*.tar.gz
+
+# React/Vite build outputs
+frontend/dist/
+frontend/build/
+frontend/.vite/
+frontend/.turbo/
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Vector Database - Allow for deployment
+# vector_store/  # Old ChromaDB - excluded from deployment  
+# vector_store_faiss/  # FAISS vector store - included for deployment
+vector_store_backup/
+*.sqlite3.backup
+*.db.backup
+
+# Log Files
+*.log
+logs/
+backend.log
+chatbot.log
+
+# Database Files (SQLite)
+*.db
+*.sqlite
+*.sqlite3
+backend/chatbot.db
+backend/instance/
+
+# Temporary Files
+temp/
+tmp/
+*.tmp
+*.temp
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Azure/Cloud specific
+*.publishsettings
+*.azurePubxml
+
+# Backup files
+*.bak
+*.backup
+*.swp
+*.swo
+*~
+
+# Large files that shouldn't be tracked
+*.pdf
+*.docx
+*.doc
+*.xlsx
+*.xls
+*.pptx
+*.ppt
+
+# Streamlit secrets and config (for security)
+.streamlit/secrets.toml
+secrets.toml
+
+# API Keys and Secrets
+secrets.json
+config.json
+credentials.json
