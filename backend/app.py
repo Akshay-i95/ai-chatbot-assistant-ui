@@ -13,7 +13,6 @@ from typing import Dict, List, Optional, Any
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from werkzeug.utils import secure_filename
 import traceback
 
 # Add project root to path
@@ -48,13 +47,8 @@ CORS(app, origins=[
 # Database configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL', 'sqlite:///chatbot.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 db = SQLAlchemy(app)
-
-# Create uploads directory
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Database Models
 class ChatSession(db.Model):
@@ -98,7 +92,11 @@ def initialize_system():
             'azure_account_name': os.getenv('AZURE_STORAGE_ACCOUNT_NAME'),
             'azure_account_key': os.getenv('AZURE_STORAGE_ACCOUNT_KEY'),
             'azure_container_name': os.getenv('AZURE_STORAGE_CONTAINER_NAME'),
-            'azure_folder_path': os.getenv('AZURE_BLOB_FOLDER_PATH')
+            'azure_folder_path': os.getenv('AZURE_BLOB_FOLDER_PATH'),
+            # Pinecone configuration
+            'pinecone_api_key': os.getenv('PINECONE_API_KEY'),
+            'pinecone_environment': os.getenv('PINECONE_ENVIRONMENT', 'us-east-1-aws'),
+            'pinecone_index_name': os.getenv('PINECONE_INDEX_NAME', 'chatbot-chunks')
         }
         
         # Initialize Vector Database
@@ -259,10 +257,11 @@ def send_message(session_id):
         chatbot = chatbot_system['chatbot']
         llm_service = chatbot_system['llm_service']
         
-        # Process with chatbot (includes vector search)
+        # Process with chatbot (includes vector search and conversation history)
         response_data = chatbot.process_query(
             user_query=user_message,
-            include_context=True
+            include_context=True,
+            conversation_history=conversation_history
         )
         
         ai_content = response_data.get('response', 'I apologize, but I encountered an error processing your request.')
@@ -272,7 +271,9 @@ def send_message(session_id):
             'processing_time': response_data.get('processing_time', 0),
             'model_used': response_data.get('model_used', 'unknown'),
             'reasoning': response_data.get('reasoning', ''),
-            'confidence': response_data.get('confidence', 0)
+            'confidence': response_data.get('confidence', 0),
+            'is_follow_up': response_data.get('is_follow_up', False),
+            'follow_up_context': response_data.get('follow_up_context', None)
         }
         
         # Save AI response
@@ -328,37 +329,6 @@ def send_message(session_id):
         logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
-# @app.route('/api/files/upload', methods=['POST'])
-# def upload_file():
-#     """Upload a file for processing"""
-#     try:
-#         if 'file' not in request.files:
-#             return jsonify({'error': 'No file provided'}), 400
-#         
-#         file = request.files['file']
-#         if file.filename == '':
-#             return jsonify({'error': 'No file selected'}), 400
-#         
-#         if file and file.filename.lower().endswith('.pdf'):
-#             filename = secure_filename(file.filename)
-#             file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-#             file.save(file_path)
-#             
-#             # TODO: Process the PDF and add to vector database
-#             # This would involve using your existing pdf_processor.py
-#             
-#             return jsonify({
-#                 'message': 'File uploaded successfully',
-#                 'filename': filename,
-#                 'status': 'uploaded'
-#             })
-#         else:
-#             return jsonify({'error': 'Only PDF files are supported'}), 400
-#             
-#     except Exception as e:
-#         logger.error(f"Error uploading file: {str(e)}")
-#         return jsonify({'error': str(e)}), 500
-
 @app.route('/api/files/download/<filename>')
 def download_file(filename):
     """Download a file from Azure storage"""
@@ -409,7 +379,9 @@ def get_system_status():
                 'embedding_model': config.get('embedding_model'),
                 'max_context_chunks': config.get('max_context_chunks'),
                 'enable_citations': config.get('enable_citations'),
-                'enable_context_expansion': config.get('enable_context_expansion')
+                'enable_context_expansion': config.get('enable_context_expansion'),
+                'pinecone_index_name': config.get('pinecone_index_name') if config.get('vector_db_type') == 'pinecone' else None,
+                'pinecone_environment': config.get('pinecone_environment') if config.get('vector_db_type') == 'pinecone' else None
             }
         })
         

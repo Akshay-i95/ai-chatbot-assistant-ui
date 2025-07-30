@@ -108,7 +108,7 @@ class AzureBlobDownloadService:
             blob_url = f"https://{self.account_name}.blob.core.windows.net/{self.container_name}/{blob_name}"
             download_url = f"{blob_url}?{sas_token}"
             
-            self.logger.info(f"✅ Generated download URL for: {filename} -> {blob_name} (expires in {expiry_hours}h)")
+            self.logger.info(f"[SUCCESS] Generated download URL for: {filename} -> {blob_name} (expires in {expiry_hours}h)")
             
             return download_url
             
@@ -331,3 +331,4 @@ def create_azure_download_service(config: Dict = None) -> Optional[AzureBlobDown
     except Exception as e:
         logging.getLogger(__name__).error(f"❌ Failed to create Azure download service: {str(e)}")
         return None
+

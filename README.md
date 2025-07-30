@@ -1,107 +1,258 @@
-# 🤖 **Edify AI Chatbot**
+# AI Chatbot 2.0 - Full Stack with Assistant UI
 
-Modern AI-powered document analysis with beautiful React interface and Flask backend.
+A modern, full-stack AI chatbot application built with React (Next.js), Flask backend, and assistant-ui components. Features persistent chat sessions, vector database integration, and optional cloud storage.
 
-## 🚀 **Quick Start**
+## 🌟 Features
 
-### Backend (Flask API)
+- **Modern UI**: Built with assistant-ui components for a ChatGPT-like experience
+- **Persistent Chat Sessions**: Save and manage multiple conversation threads
+- **Backend Integration**: Flask API with SQLite database for chat history
+- **Vector Database**: Support for both Pinecone and FAISS for document search
+- **Cloud Storage**: Optional assistant-ui cloud integration for cross-device sync
+- **Real-time Chat**: Streaming responses with typing indicators
+- **Session Management**: Create, switch, and delete chat sessions
+- **System Monitoring**: Real-time backend status monitoring
+
+## 🏗️ Architecture
+
+```
+frontend/chatbot/          # Next.js React frontend
+├── app/                   # App router
+├── components/            # React components
+└── lib/                   # Utilities and runtime
+
+backend/                   # Flask Python backend
+├── app.py                 # Main Flask application
+├── chatbot.py             # AI chatbot logic
+├── vector_db.py          # Vector database management
+└── llm_service.py        # LLM service integration
+```
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Python 3.8+ with pip
+- Node.js 18+ with npm
+- OpenAI API key
+- (Optional) Pinecone API key for vector search
+- (Optional) Assistant UI cloud API key
+
+### Installation
+
+1. **Clone and setup**:
+   ```bash
+   cd chatbot-2.0
+   chmod +x setup.sh
+   ./setup.sh
+   ```
+
+   Or on Windows:
+   ```cmd
+   setup.bat
+   ```
+
+2. **Configure Environment Variables**:
+
+   **Backend** (`backend/.env`):
+   ```env
+   # OpenAI Configuration
+   OPENAI_API_KEY=your_openai_api_key_here
+   
+   # Vector Database (choose one)
+   VECTOR_DB_TYPE=pinecone  # or 'faiss'
+   PINECONE_API_KEY=your_pinecone_api_key
+   PINECONE_INDEX_NAME=chatbot-chunks
+   
+   # Azure Blob Storage (optional)
+   AZURE_STORAGE_CONNECTION_STRING=your_connection_string
+   AZURE_STORAGE_CONTAINER_NAME=documents
+   
+   # Flask Configuration
+   FLASK_PORT=5000
+   FLASK_DEBUG=false
+   ```
+
+   **Frontend** (`frontend/chatbot/.env.local`):
+   ```env
+   # Backend Configuration
+   BACKEND_URL=http://localhost:5000
+   NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
+   
+   # Assistant UI Cloud (optional)
+   NEXT_PUBLIC_ASSISTANT_UI_API_KEY=your_assistant_ui_cloud_api_key
+   NEXT_PUBLIC_ENABLE_CLOUD_STORAGE=true
+   
+   # OpenAI (for fallback)
+   OPENAI_API_KEY=your_openai_api_key_here
+   ```
+
+3. **Start the Backend**:
+   ```bash
+   cd backend
+   source venv/bin/activate  # or venv\Scripts\activate.bat on Windows
+   python app.py
+   ```
+
+4. **Start the Frontend** (in a new terminal):
+   ```bash
+   cd frontend/chatbot
+   npm run dev
+   ```
+
+5. **Open the Application**:
+   Navigate to [http://localhost:3000](http://localhost:3000)
+
+## 🔧 Configuration
+
+### Vector Database Setup
+
+#### Option 1: Pinecone (Recommended for production)
+1. Create a Pinecone account and get your API key
+2. Create an index named `chatbot-chunks` with dimension 384
+3. Set `VECTOR_DB_TYPE=pinecone` in backend environment
+
+#### Option 2: FAISS (Good for development)
+1. Set `VECTOR_DB_TYPE=faiss` in backend environment
+2. The FAISS index will be created automatically
+
+### Assistant UI Cloud Setup
+1. Sign up for assistant-ui cloud (if available)
+2. Get your API key
+3. Set `NEXT_PUBLIC_ASSISTANT_UI_API_KEY` in frontend environment
+4. Enable with `NEXT_PUBLIC_ENABLE_CLOUD_STORAGE=true`
+
+## 📊 API Endpoints
+
+### Backend (Flask) - Port 5000
+
+| Endpoint | Method | Description |
+|----------|---------|-------------|
+| `/api/health` | GET | Health check |
+| `/api/chat/sessions` | GET | Get all chat sessions |
+| `/api/chat/sessions` | POST | Create new session |
+| `/api/chat/sessions/{id}` | GET | Get session with messages |
+| `/api/chat/sessions/{id}` | DELETE | Delete session |
+| `/api/chat/sessions/{id}/messages` | POST | Send message |
+| `/api/system/status` | GET | System status |
+
+### Frontend (Next.js) - Port 3000
+
+| Endpoint | Method | Description |
+|----------|---------|-------------|
+| `/api/chat` | POST | Chat with assistant (proxy to backend) |
+| `/api/sessions` | GET/POST | Session management |
+| `/api/sessions/{id}` | GET/DELETE | Individual session |
+
+## 🎯 Usage
+
+### Basic Chat
+1. Open the application
+2. Start typing in the message input
+3. The AI will respond with relevant information
+
+### Session Management
+- Click "New Thread" to start a fresh conversation
+- Click on any session in the sidebar to switch
+- Click the archive icon to delete a session
+
+### System Monitoring
+- Check the "System Status" in the sidebar
+- Green indicators show healthy components
+- Red indicators show issues that need attention
+
+## 🔍 Development
+
+### Frontend Development
+```bash
+cd frontend/chatbot
+npm run dev      # Start development server
+npm run build    # Build for production
+npm run lint     # Run linting
+```
+
+### Backend Development
 ```bash
 cd backend
-pip install -r requirements.txt
-python app.py
+source venv/bin/activate
+python app.py                    # Start Flask server
+python check_database.py         # Check database status
+python manage_pinecone_index.py  # Manage Pinecone index
 ```
 
-### Frontend (React + Vite)
-```bash
-cd frontend
-npm install
-npm run dev
+## � Troubleshooting
+
+### Backend Issues
+- **Database errors**: Check `backend/backend.log`
+- **Vector DB connection**: Verify API keys and configuration
+- **Port conflicts**: Change `FLASK_PORT` in environment
+
+### Frontend Issues
+- **Build errors**: Run `npm install` to update dependencies
+- **API connection**: Verify `BACKEND_URL` matches Flask server
+- **Assistant UI issues**: Check assistant-ui documentation
+
+### Common Problems
+
+1. **"System not ready" error**:
+   - Check backend logs
+   - Verify vector database configuration
+   - Ensure all required environment variables are set
+
+2. **Sessions not loading**:
+   - Check backend is running on correct port
+   - Verify CORS configuration
+   - Check browser console for errors
+
+3. **Chat responses not working**:
+   - Verify OpenAI API key
+   - Check backend logs for LLM service errors
+   - Ensure proper session creation
+
+## 📁 Project Structure
+
+```
+chatbot-2.0/
+├── frontend/chatbot/              # Next.js frontend
+│   ├── app/                       # App router
+│   │   ├── api/                   # API routes
+│   │   ├── assistant.tsx          # Main assistant component
+│   │   └── page.tsx              # Home page
+│   ├── components/                # React components
+│   │   ├── assistant-ui/          # Assistant UI components
+│   │   └── ui/                    # Base UI components
+│   ├── lib/                       # Utilities
+│   │   ├── backend-runtime.ts     # Backend integration
+│   │   ├── chat-runtime.ts       # Enhanced chat runtime
+│   │   └── chat-context.ts       # React context
+│   └── package.json              # Dependencies
+├── backend/                       # Flask backend
+│   ├── app.py                     # Main application
+│   ├── chatbot.py                # Chatbot logic
+│   ├── vector_db.py              # Vector database
+│   ├── llm_service.py            # LLM integration
+│   └── requirements.txt          # Python dependencies
+├── setup.sh                      # Setup script (Unix)
+├── setup.bat                     # Setup script (Windows)
+└── README.md                     # This file
 ```
 
-Visit: **http://localhost:3000**
+## 🤝 Contributing
 
-## ✨ **Features**
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
 
-- � **Modern Chat Interface** - ChatGPT-style responsive design
-- �🔍 **Smart Document Search** - Vector-based similarity search
-- 🤖 **AI-Powered Responses** - Gemini/OpenRouter LLM integration  
-- 📚 **Source Attribution** - Always shows source documents with download links
-- � **Conversation Memory** - Persistent chat history with SQLite
-- ⚡ **Real-time Responses** - Fast API with streaming support
-- 🎨 **Beautiful Interface** - Modern React UI with animations
-- 📱 **Responsive Design** - Works on desktop and mobile
-- 🔄 **Session Management** - Multiple chat sessions support
+## 📄 License
 
-## 🏗️ **Architecture**
+This project is licensed under the MIT License.
 
-```
-🌐 React Frontend (Vite + TypeScript)
-    ↓ REST API
-🐍 Flask Backend (Python)
-    ↓
-🤖 AI Chatbot (chatbot.py)  
-    ↓
-🗄️ Vector Database (vector_db.py)
-    ↓
-📄 PDF Processor (pdf_processor.py)
-```
+## 🙏 Acknowledgments
 
-## 🔧 **Configuration**
-
-Add your API keys to `.env` in the backend directory:
-```
-GEMINI_API_KEY=your_gemini_api_key_here
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-FLASK_SECRET_KEY=your_secret_key_here
-```
-
-## 💾 **Database**
-
-- **Chat Sessions**: Stored in SQLite with automatic titles
-- **Messages**: Full conversation history with metadata
-- **Sources**: Link to original documents with download support
-
-## 🎯 **Production Ready**
-
-- Clean, scalable architecture
-- Error handling and logging
-- API rate limiting support
-- Responsive mobile-first design
-- Modern TypeScript codebase
-- Performance optimized
-
-## 📱 **Modern Features**
-
-- **ChatGPT-style Interface**: Clean, modern chat bubbles
-- **Markdown Support**: Rich text formatting in responses
-- **Source Downloads**: One-click PDF downloads
-- **Copy Messages**: Easy message copying
-- **Typing Indicators**: Real-time response feedback
-- **Session Management**: Multiple conversation threads
-- **Responsive Design**: Mobile and desktop optimized
-
-## � **Development**
-
-### Tech Stack
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS
-- **Backend**: Flask, SQLAlchemy, SQLite
-- **AI**: Gemini AI, OpenRouter, Vector Search
-- **Icons**: Lucide React
-- **Styling**: Tailwind CSS with custom animations
-
-### Project Structure
-```
-chatbot/
-├── backend/           # Flask API server
-│   ├── app.py        # Main Flask application
-│   ├── chatbot.py    # AI chatbot logic
-│   ├── llm_service.py # LLM integration
-│   └── vector_db.py  # Vector database
-├── frontend/         # React application
-│   ├── src/
-│   │   ├── components/ # React components
-│   │   ├── lib/       # API services
-│   │   └── App.tsx    # Main app
-│   └── package.json
-└── vector_store*/    # Vector databases
-```
+- [Assistant UI](https://assistant-ui.com/) for the React components
+- [OpenAI](https://openai.com/) for the LLM API
+- [Pinecone](https://pinecone.io/) for vector database
+- [Next.js](https://nextjs.org/) for the React framework
+- [Flask](https://flask.palletsprojects.com/) for the backend framework

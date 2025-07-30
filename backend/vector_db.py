@@ -35,6 +35,12 @@ try:
 except ImportError:
     FAISS_AVAILABLE = False
 
+try:
+    from pinecone import Pinecone, ServerlessSpec
+    PINECONE_AVAILABLE = True
+except ImportError:
+    PINECONE_AVAILABLE = False
+
 class EnhancedVectorDBManager:
     def __init__(self, config: Dict):
         """Initialize enhanced vector database for chunk-level retrieval"""
@@ -104,6 +110,8 @@ class EnhancedVectorDBManager:
                 self._initialize_chromadb()
             elif self.db_type == 'faiss':
                 self._initialize_faiss()
+            elif self.db_type == 'pinecone':
+                self._initialize_pinecone()
             else:
                 raise ValueError(f"Unsupported database type: {self.db_type}")
                 
@@ -186,6 +194,55 @@ class EnhancedVectorDBManager:
             self.logger.error(f"❌ FAISS initialization failed: {str(e)}")
             raise
     
+    def _initialize_pinecone(self):
+        """Initialize Pinecone with enhanced indexing for semantic search"""
+        if not PINECONE_AVAILABLE:
+            raise ImportError("Pinecone not available. Install with: pip install pinecone-client")
+        
+        try:
+            # Get Pinecone configuration from config
+            api_key = self.config.get('pinecone_api_key') or os.getenv('PINECONE_API_KEY')
+            environment = self.config.get('pinecone_environment', 'us-east-1-aws')
+            index_name = self.config.get('pinecone_index_name', self.collection_name)
+            
+            if not api_key:
+                raise ValueError("Pinecone API key not found. Set PINECONE_API_KEY environment variable or add to config.")
+            
+            # Initialize Pinecone client
+            self.pinecone_client = Pinecone(api_key=api_key)
+            
+            # Check if index exists, create if not
+            existing_indexes = [index.name for index in self.pinecone_client.list_indexes()]
+            
+            if index_name not in existing_indexes:
+                self.logger.info(f"Creating new Pinecone index: {index_name}")
+                self.pinecone_client.create_index(
+                    name=index_name,
+                    dimension=self.embedding_dim,
+                    metric='cosine',
+                    spec=ServerlessSpec(
+                        cloud='aws',
+                        region=environment
+                    )
+                )
+                # Wait for index to be ready
+                import time
+                time.sleep(10)
+            
+            # Connect to index
+            self.pinecone_index = self.pinecone_client.Index(index_name)
+            self.pinecone_index_name = index_name
+            
+            # Get index stats
+            stats = self.pinecone_index.describe_index_stats()
+            total_vectors = stats.get('total_vector_count', 0)
+            
+            self.logger.info(f"✅ Connected to Pinecone index '{index_name}' with {total_vectors} vectors")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Pinecone initialization failed: {str(e)}")
+            raise
+    
     def store_chunks_batch(self, chunks: List[Dict]) -> bool:
         """Store chunks in batch with enhanced metadata for AI retrieval"""
         if not chunks:
@@ -246,6 +303,8 @@ class EnhancedVectorDBManager:
                 self._store_chunks_chromadb(texts, metadatas, ids)
             elif self.db_type == 'faiss':
                 self._store_chunks_faiss(texts, metadatas, ids)
+            elif self.db_type == 'pinecone':
+                self._store_chunks_pinecone(texts, metadatas, ids)
             
             # Update statistics
             self.stats['chunks_stored'] += len(chunks)
@@ -337,6 +396,52 @@ class EnhancedVectorDBManager:
         except Exception as e:
             self.logger.error(f"❌ Failed to save FAISS index: {str(e)}")
     
+    def _store_chunks_pinecone(self, texts: List[str], metadatas: List[Dict], ids: List[str]):
+        """Store chunks in Pinecone"""
+        try:
+            # Generate embeddings
+            embeddings = self.embedding_model.encode(texts, convert_to_numpy=True)
+            
+            # Prepare vectors for Pinecone
+            vectors_to_upsert = []
+            for i, (text, metadata, chunk_id) in enumerate(zip(texts, metadatas, ids)):
+                # Pinecone metadata must be flat key-value pairs with simple types
+                pinecone_metadata = {
+                    'text': text[:40000],  # Pinecone has metadata size limits
+                    'chunk_id': chunk_id,
+                    'filename': str(metadata.get('filename', '')),
+                    'chunk_index': int(metadata.get('chunk_index', 0)),
+                    'section_index': int(metadata.get('section_index', 0)),
+                    'content_type': str(metadata.get('content_type', 'general')),
+                    'chunk_length': int(metadata.get('chunk_length', 0)),
+                    'chunk_tokens': int(metadata.get('chunk_tokens', 0)),
+                    'preview': str(metadata.get('preview', ''))[:1000],  # Limit preview size
+                    'file_pages': int(metadata.get('file_pages', 0)),
+                    'extraction_method': str(metadata.get('extraction_method', 'unknown')),
+                    'ocr_used': str(metadata.get('ocr_used', False)),
+                    'images_processed': int(metadata.get('images_processed', 0)),
+                    'created_at': float(metadata.get('created_at', time.time())),
+                    'stored_at': float(metadata.get('stored_at', time.time()))
+                }
+                
+                vectors_to_upsert.append({
+                    'id': chunk_id,
+                    'values': embeddings[i].tolist(),
+                    'metadata': pinecone_metadata
+                })
+            
+            # Upsert vectors in batches (Pinecone recommends batches of 100-1000)
+            batch_size = 100
+            for i in range(0, len(vectors_to_upsert), batch_size):
+                batch = vectors_to_upsert[i:i + batch_size]
+                self.pinecone_index.upsert(vectors=batch)
+            
+            self.logger.info(f"✅ Stored {len(vectors_to_upsert)} vectors in Pinecone")
+            
+        except Exception as e:
+            self.logger.error(f"❌ Pinecone storage error: {str(e)}")
+            raise
+    
     def search_similar_chunks(self, query: str, top_k: int = None, filters: Dict = None) -> List[Dict]:
         """Search for similar chunks optimized for AI chatbot responses"""
         if top_k is None:
@@ -350,6 +455,8 @@ class EnhancedVectorDBManager:
                 results = self._search_chromadb(query, top_k, filters)
             elif self.db_type == 'faiss':
                 results = self._search_faiss(query, top_k, filters)
+            elif self.db_type == 'pinecone':
+                results = self._search_pinecone(query, top_k, filters)
             else:
                 return []
             
@@ -366,7 +473,7 @@ class EnhancedVectorDBManager:
             current_avg = self.stats['average_query_time']
             self.stats['average_query_time'] = (current_avg * (self.stats['queries_processed'] - 1) + query_time) / self.stats['queries_processed']
             
-            self.logger.info(f"🔍 Found {len(enhanced_results)} relevant chunks for query in {query_time:.3f}s")
+            self.logger.info(f"Found {len(enhanced_results)} relevant chunks for query in {query_time:.3f}s")
             
             return enhanced_results
             
@@ -450,6 +557,51 @@ class EnhancedVectorDBManager:
             
         except Exception as e:
             self.logger.error(f"❌ FAISS search error: {str(e)}")
+            return []
+    
+    def _search_pinecone(self, query: str, top_k: int, filters: Dict = None) -> List[Dict]:
+        """Search Pinecone for similar chunks"""
+        try:
+            # Generate query embedding
+            query_embedding = self.embedding_model.encode([query], convert_to_numpy=True)
+            
+            # Prepare filter for Pinecone (if any)
+            pinecone_filter = {}
+            if filters:
+                for key, value in filters.items():
+                    # Convert to appropriate types for Pinecone filtering
+                    if key in ['chunk_index', 'section_index', 'chunk_length', 'chunk_tokens', 'file_pages', 'images_processed']:
+                        pinecone_filter[key] = {"$eq": int(value)}
+                    elif key in ['created_at', 'stored_at']:
+                        pinecone_filter[key] = {"$eq": float(value)}
+                    else:
+                        pinecone_filter[key] = {"$eq": str(value)}
+            
+            # Perform search
+            search_response = self.pinecone_index.query(
+                vector=query_embedding[0].tolist(),
+                top_k=top_k,
+                include_metadata=True,
+                filter=pinecone_filter if pinecone_filter else None
+            )
+            
+            # Format results
+            formatted_results = []
+            for i, match in enumerate(search_response.matches):
+                # Extract metadata
+                metadata = match.metadata or {}
+                
+                formatted_results.append({
+                    'text': metadata.get('text', ''),
+                    'metadata': metadata,
+                    'similarity_score': float(match.score),
+                    'rank': i + 1
+                })
+            
+            return formatted_results
+            
+        except Exception as e:
+            self.logger.error(f"❌ Pinecone search error: {str(e)}")
             return []
     
     def _enhance_search_results(self, results: List[Dict], query: str) -> List[Dict]:
@@ -622,6 +774,9 @@ class EnhancedVectorDBManager:
                 total_chunks = self.collection.count()
             elif self.db_type == 'faiss':
                 total_chunks = self.faiss_index.ntotal
+            elif self.db_type == 'pinecone':
+                stats = self.pinecone_index.describe_index_stats()
+                total_chunks = stats.get('total_vector_count', 0)
             
             return {
                 'database_type': self.db_type,
@@ -660,4 +815,70 @@ class EnhancedVectorDBManager:
             
         except Exception as e:
             self.logger.error(f"❌ Failed to create search index: {str(e)}")
+            return False
+    
+    def clear_collection(self) -> bool:
+        """Clear all data from the vector database"""
+        try:
+            if self.db_type == 'chromadb':
+                # Delete and recreate collection
+                self.db_client.delete_collection(self.collection_name)
+                self.collection = self.db_client.create_collection(
+                    name=self.collection_name,
+                    embedding_function=embedding_functions.SentenceTransformerEmbeddingFunction(
+                        model_name=self.embedding_model_name
+                    ),
+                    metadata={"description": "Enhanced PDF chunks for AI chatbot retrieval"}
+                )
+                
+            elif self.db_type == 'faiss':
+                # Reset FAISS index
+                self.faiss_index = faiss.IndexHNSWFlat(self.embedding_dim, 32)
+                self.faiss_index.hnsw.efConstruction = 200
+                self.faiss_index.hnsw.efSearch = 100
+                self.faiss_metadata = {}
+                self.faiss_id_counter = 0
+                self._save_faiss_index()
+                
+            elif self.db_type == 'pinecone':
+                # Delete all vectors from Pinecone index
+                self.pinecone_index.delete(delete_all=True)
+            
+            # Reset statistics
+            self.stats['chunks_stored'] = 0
+            self.stats['last_update'] = None
+            
+            self.logger.info(f"✅ Cleared all data from {self.db_type} collection")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to clear collection: {str(e)}")
+            return False
+    
+    def delete_chunks_by_filename(self, filename: str) -> bool:
+        """Delete all chunks from a specific file"""
+        try:
+            if self.db_type == 'pinecone':
+                # Pinecone supports filtering for deletion
+                self.pinecone_index.delete(filter={"filename": {"$eq": filename}})
+                self.logger.info(f"✅ Deleted chunks for file: {filename}")
+                return True
+                
+            elif self.db_type == 'chromadb':
+                # ChromaDB delete with where clause
+                try:
+                    self.collection.delete(where={"filename": filename})
+                    self.logger.info(f"✅ Deleted chunks for file: {filename}")
+                    return True
+                except Exception as e:
+                    self.logger.warning(f"⚠️ Could not delete from ChromaDB: {str(e)}")
+                    return False
+                    
+            elif self.db_type == 'faiss':
+                # FAISS requires rebuilding without the deleted items
+                self.logger.warning("⚠️ FAISS requires full rebuild to delete specific files")
+                return False
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to delete chunks for file {filename}: {str(e)}")
             return False

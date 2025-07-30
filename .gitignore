@@ -4,6 +4,7 @@
 .env.development
 .env.test
 .env.production
+.env.*
 
 # Python
 __pycache__/
@@ -38,7 +39,7 @@ env.bak/
 venv.bak/
 .venv/
 
-# Node.js / React
+# Node.js / React / Next.js
 node_modules/
 npm-debug.log*
 yarn-debug.log*
@@ -50,11 +51,21 @@ yarn.lock
 *.tgz
 *.tar.gz
 
+# Next.js build outputs
+.next/
+out/
+frontend/chatbot/.next/
+frontend/chatbot/out/
+
 # React/Vite build outputs
 frontend/dist/
 frontend/build/
 frontend/.vite/
 frontend/.turbo/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
 
 # PyCharm
 .idea/
@@ -71,18 +82,28 @@ frontend/.turbo/
 .coverage
 htmlcov/
 
-# Vector Database - Allow for deployment
-# vector_store/  # Old ChromaDB - excluded from deployment  
-# vector_store_faiss/  # FAISS vector store - included for deployment
+# Vector Database & AI Models
+# ChromaDB
+vector_store/
 vector_store_backup/
 *.sqlite3.backup
 *.db.backup
+
+# Pinecone (if used)
+pinecone_index/
+
+# Model files
+*.bin
+*.safetensors
+models/
+huggingface_cache/
 
 # Log Files
 *.log
 logs/
 backend.log
 chatbot.log
+app.log
 
 # Database Files (SQLite)
 *.db
@@ -90,6 +111,7 @@ chatbot.log
 *.sqlite3
 backend/chatbot.db
 backend/instance/
+instance/
 
 # Temporary Files
 temp/
@@ -107,9 +129,22 @@ ehthumbs.db
 Thumbs.db
 desktop.ini
 
+# API Keys and Secrets
+secrets.json
+config.json
+credentials.json
+azure_credentials.json
+openai_key.txt
+api_keys.txt
+
 # Azure/Cloud specific
 *.publishsettings
 *.azurePubxml
+.azure/
+
+# WordPress API credentials
+wp_credentials.json
+wordpress_config.json
 
 # Backup files
 *.bak
@@ -127,11 +162,51 @@ desktop.ini
 *.pptx
 *.ppt
 
-# Streamlit secrets and config (for security)
+# Cache directories
+.cache/
+cache/
+.temp/
+
+# Temporary Files
+temp/
+tmp/
+*.tmp
+*.temp
+
+# OS Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDE Files
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage/
+
+# Streamlit
 .streamlit/secrets.toml
 secrets.toml
 
-# API Keys and Secrets
-secrets.json
-config.json
-credentials.json
+# Vercel
+.vercel
+
+# Deployment
+deploy/
+deployment/

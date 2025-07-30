@@ -56,15 +56,15 @@ class LLMService:
         try:
             start_time = time.time()
             
-            self.logger.info(f"🔄 Generating response for query: {query[:50]}...")
-            self.logger.info(f"📄 Context length: {len(context)} characters")
+            self.logger.info(f"Generating response for query: {query[:50]}...")
+            self.logger.info(f"Context length: {len(context)} characters")
             
             # Try Gemini API first (Primary)
             if self.gemini_available:
-                self.logger.info("🌟 Trying Gemini AI API...")
+                self.logger.info("Trying Gemini AI API...")
                 response_data = self._call_gemini_api(query, context, conversation_history)
                 if response_data:
-                    self.logger.info(f"✅ Gemini AI successful: {response_data['response'][:100]}...")
+                    self.logger.info(f"Gemini AI successful: {response_data['response'][:100]}...")
                     return {
                         'response': response_data['response'],
                         'reasoning': response_data.get('reasoning', ''),
