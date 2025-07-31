@@ -128,24 +128,24 @@ export async function POST(req: Request) {
             await sendChunk('</details>\n\n', 100);
           }
           
-          // 2. Stream reasoning if available
+          // 2. Stream reasoning process if available (ChatGPT style)
           if (reasoning.trim()) {
-            await sendChunk('🤔 **Reasoning:**\n\n', 100);
-            await sendChunk('<details>\n<summary>View AI Reasoning Process</summary>\n\n', 50);
+            await sendChunk('<div class="reasoning-section">\n', 50);
+            await sendChunk('<details class="reasoning-details">\n', 50);
+            await sendChunk('<summary class="reasoning-summary">💭 Reasoning</summary>\n', 50);
+            await sendChunk('<div class="reasoning-content">\n\n', 50);
             
-            // Stream reasoning in smaller chunks to avoid JSON issues
+            // Stream reasoning in smaller chunks
             const reasoningChunks = reasoning.split('. ');
             for (let i = 0; i < reasoningChunks.length; i++) {
               const chunk = reasoningChunks[i] + (i < reasoningChunks.length - 1 ? '. ' : '');
               await sendChunk(chunk, 80);
             }
             
-            await sendChunk('\n\n</details>\n\n---\n\n', 100);
+            await sendChunk('\n\n</div>\n</details>\n</div>\n\n', 100);
           }
           
-          // 3. Stream the main AI response
-          await sendChunk('💬 **Response:**\n\n', 100);
-          
+          // 3. Stream the main AI response directly without label
           // Stream main response word by word
           const words = aiResponse.split(' ');
           for (let i = 0; i < words.length; i++) {
@@ -155,44 +155,58 @@ export async function POST(req: Request) {
             await sendChunk(word, 80);
           }
           
-          // 4. Add sources section if available
+          // 4. Add PDF download links at the end if available
           if (sources.length > 0) {
-            await sendChunk('\n\n---\n\n📚 **Sources & References:**\n\n', 100);
-            await sendChunk('<details>\n<summary>View Source Documents</summary>\n\n', 50);
-            
-            for (let i = 0; i < sources.length; i++) {
-              const source = sources[i];
-              await sendChunk(`**Source ${i + 1}:**\n`, 30);
-              await sendChunk(`- **Document:** ${source.filename || 'Unknown'}\n`, 30);
-              await sendChunk(`- **Relevance Score:** ${(source.relevance_score || 0).toFixed(3)}\n`, 30);
+            const pdfSources = sources.filter((source: any) => source.filename && source.filename !== 'Unknown');
+            if (pdfSources.length > 0) {
+              await sendChunk('\n\n', 50);
               
-              if (source.total_pages) {
-                await sendChunk(`- **Total Pages:** ${source.total_pages}\n`, 30);
+              for (let i = 0; i < pdfSources.length; i++) {
+                const source = pdfSources[i];
+                const downloadUrl = `http://localhost:5000/api/files/download/${encodeURIComponent(source.filename)}`;
+                await sendChunk(`<a href="${downloadUrl}" target="_blank" rel="noopener noreferrer" download="${source.filename}">${source.filename}</a> `, 30);
               }
-              
-              if (source.page) {
-                await sendChunk(`- **Page:** ${source.page}\n`, 30);
-              }
-              
-              if (source.content) {
-                const snippet = source.content.substring(0, 200);
-                await sendChunk(`- **Content:** ${snippet}...\n`, 30);
-              }
-              
-              if (source.download_available && source.filename) {
-                await sendChunk(`- **[Download PDF](http://localhost:5000/api/files/download/${source.filename})**\n`, 30);
-                if (source.file_size_mb) {
-                  await sendChunk(`- **File Size:** ${source.file_size_mb.toFixed(1)} MB\n`, 30);
-                }
-              } else if (source.filename && source.filename !== 'Unknown') {
-                await sendChunk(`- **[Download PDF](http://localhost:5000/api/files/download/${source.filename})** _(File may not be available)_\n`, 30);
-              }
-              
-              await sendChunk('\n', 30);
             }
-            
-            await sendChunk(`\n**Confidence Score:** ${(confidence * 100).toFixed(1)}%\n\n</details>`, 50);
           }
+          
+          // Sources section disabled per user request - clean UI with no technical metadata
+          // if (sources.length > 0) {
+          //   await sendChunk('\n\n---\n\n📚 **Sources & References:**\n\n', 100);
+          //   await sendChunk('<details>\n<summary>View Source Documents</summary>\n\n', 50);
+          //   
+          //   for (let i = 0; i < sources.length; i++) {
+          //     const source = sources[i];
+          //     await sendChunk(`**Source ${i + 1}:**\n`, 30);
+          //     await sendChunk(`- **Document:** ${source.filename || 'Unknown'}\n`, 30);
+          //     await sendChunk(`- **Relevance Score:** ${(source.relevance_score || 0).toFixed(3)}\n`, 30);
+          //     
+          //     if (source.total_pages) {
+          //       await sendChunk(`- **Total Pages:** ${source.total_pages}\n`, 30);
+          //     }
+          //     
+          //     if (source.page) {
+          //       await sendChunk(`- **Page:** ${source.page}\n`, 30);
+          //     }
+          //     
+          //     if (source.content) {
+          //       const snippet = source.content.substring(0, 200);
+          //       await sendChunk(`- **Content:** ${snippet}...\n`, 30);
+          //     }
+          //     
+          //     if (source.download_available && source.filename) {
+          //       await sendChunk(`- **[Download PDF](http://localhost:5000/api/files/download/${source.filename})**\n`, 30);
+          //       if (source.file_size_mb) {
+          //         await sendChunk(`- **File Size:** ${source.file_size_mb.toFixed(1)} MB\n`, 30);
+          //       }
+          //     } else if (source.filename && source.filename !== 'Unknown') {
+          //       await sendChunk(`- **[Download PDF](http://localhost:5000/api/files/download/${source.filename})** _(File may not be available)_\n`, 30);
+          //     }
+          //     
+          //     await sendChunk('\n', 30);
+          //   }
+          //   
+          //   await sendChunk(`\n**Confidence Score:** ${(confidence * 100).toFixed(1)}%\n\n</details>`, 50);
+          // }
           
           // Send finish signal only if controller is still open
           if (controller.desiredSize !== null) {

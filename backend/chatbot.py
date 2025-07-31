@@ -1783,7 +1783,7 @@ class AIChhatbotInterface:
             
             # Topics discussed
             if self.conversation_memory['topics_discussed']:
-                summary += "**📚 Topics Discussed:**\n"
+                summary += "**Topics Discussed:**\n"
                 for topic, indices in list(self.conversation_memory['topics_discussed'].items())[:5]:
                     discussion_count = len(indices)
                     topic_summary = self.conversation_memory['summary_by_topic'].get(topic, {}).get('summary', '')
@@ -1793,7 +1793,7 @@ class AIChhatbotInterface:
                 summary += "\n"
             
             # Key insights/highlights
-            summary += "**💡 Key Insights:**\n"
+            summary += "**Key Insights:**\n"
             key_insights = self._extract_key_insights()
             for insight in key_insights[:3]:
                 summary += f"• {insight}\n"
@@ -1814,7 +1814,7 @@ class AIChhatbotInterface:
     def _create_topic_based_summary(self) -> str:
         """Create a topic-organized summary"""
         try:
-            summary = "## 📚 **Summary by Topics**\n\n"
+            summary = "## **Summary by Topics**\n\n"
             
             for topic, topic_data in self.conversation_memory['summary_by_topic'].items():
                 summary += f"### {topic.title()}\n"

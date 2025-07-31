@@ -135,11 +135,14 @@ Instructions:
 - Be thorough in your reasoning but concise in your final answer
 - Show your analytical process clearly
 - If context is insufficient, explain what's missing
+- DO NOT include sources, references, citations, or document names in your response
+- DO NOT add sections like "**Sources:**", "**References:**", or "**Chunks Retrieved:**"
+- Focus only on providing the answer without technical metadata
 
 Format your response as:
 **Reasoning:** [Provide detailed step-by-step analysis: Question understanding → Context analysis → Information synthesis → Critical evaluation → Conclusion formation]
 
-**Answer:** [Your comprehensive final answer based on the context]
+**Answer:** [Your comprehensive final answer based on the context - NO sources or references]
 
 Context from educational documents:
 """
@@ -244,9 +247,14 @@ Provide detailed reasoning that includes:
 4. **Evaluation**: What are the strengths and limitations of this information?
 5. **Conclusion**: How do I arrive at the best possible answer?
 
+Important Instructions:
+- DO NOT include sources, references, citations, or document names in your response
+- DO NOT add sections like "**Sources:**", "**References:**", or "**Chunks Retrieved:**"
+- Focus only on providing the answer without technical metadata
+
 Format your response as:
 **Reasoning:** [Show your complete analytical process step-by-step, demonstrating how you think through the problem]
-**Answer:** [Your final comprehensive answer]"""
+**Answer:** [Your final comprehensive answer - NO sources or references]"""
             
             user_prompt = f"Context: {context}\n\nQuestion: {query}\n\nProvide reasoning and answer:"
             

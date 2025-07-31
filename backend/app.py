@@ -10,7 +10,7 @@ import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, redirect
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 import traceback
@@ -329,28 +329,29 @@ def send_message(session_id):
         logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/files/download/<filename>')
+@app.route('/api/files/download/<path:filename>')
 def download_file(filename):
-    """Download a file from Azure storage"""
+    """Generate secure download URL and redirect to Azure storage"""
     try:
         if not chatbot_system or not chatbot_system['chatbot'].azure_service:
             return jsonify({'error': 'Azure download service not available'}), 503
         
         azure_service = chatbot_system['chatbot'].azure_service
-        file_data = azure_service.download_pdf(filename)
+        logger.info(f"Attempting to download file: {filename}")
         
-        if file_data:
-            return send_file(
-                file_data,
-                as_attachment=True,
-                download_name=filename,
-                mimetype='application/pdf'
-            )
+        # Generate secure download URL from Azure
+        download_url = azure_service.generate_download_url(filename, expiry_hours=2)
+        
+        if download_url:
+            logger.info(f"Redirecting to Azure download URL for: {filename}")
+            # Redirect to the Azure blob storage URL with SAS token
+            return redirect(download_url)
         else:
+            logger.warning(f"File not found in Azure storage: {filename}")
             return jsonify({'error': 'File not found'}), 404
             
     except Exception as e:
-        logger.error(f"Error downloading file: {str(e)}")
+        logger.error(f"Error generating download URL: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/system/status', methods=['GET'])
