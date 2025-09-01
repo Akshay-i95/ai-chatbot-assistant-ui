@@ -1,1 +1,1 @@
-web: python lightweight_app.py
+web: python app_original.py
