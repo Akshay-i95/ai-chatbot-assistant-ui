@@ -62,6 +62,27 @@ export async function POST(req: Request) {
       }
     }
 
+    // Include previous messages for better follow-up context (up to 5 recent messages)
+    const recentMessages = messages
+      .slice(-6, -1) // Get up to 5 previous messages, excluding the current one
+      .map((msg: any) => {
+        // Convert to format expected by backend
+        let content = '';
+        if (typeof msg.content === 'string') {
+          content = msg.content;
+        } else if (Array.isArray(msg.content)) {
+          const textPart = msg.content.find((part: any) => part.type === 'text');
+          content = textPart?.text || '';
+        }
+        
+        return {
+          role: msg.role,
+          content: content
+        };
+      });
+    
+    console.log(`Sending message with ${recentMessages.length} previous messages for context`);
+
     // Send message to backend
     const response = await fetch(`${backendUrl}/api/chat/sessions/${sessionId}/messages`, {
       method: 'POST',
@@ -69,7 +90,8 @@ export async function POST(req: Request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        content: messageContent
+        content: messageContent,
+        conversation_history: recentMessages.length > 0 ? recentMessages : undefined
       }),
     });
 
@@ -79,12 +101,31 @@ export async function POST(req: Request) {
 
     const data = await response.json();
     const aiResponse = data.ai_message.content;
+    
+    // Extract metadata from both top-level fields and metadata object
     const metadata = data.ai_message.metadata || {};
-    const reasoning = metadata.reasoning || '';
+    
+    // Try getting reasoning from both places (direct field or metadata)
+    const reasoning = data.ai_message.reasoning || metadata.reasoning || '';
     const sources = metadata.sources || [];
     const confidence = metadata.confidence || 0;
     const isFollowUp = metadata.is_follow_up || false;
     const followUpContext = metadata.follow_up_context || null;
+    
+    // Log reasoning data for debugging
+    console.log(`🧠 Backend reasoning data:`, {
+      direct_reasoning: data.ai_message.reasoning ? data.ai_message.reasoning.substring(0, 100) + '...' : 'NONE',
+      metadata_reasoning: metadata.reasoning ? metadata.reasoning.substring(0, 100) + '...' : 'NONE',
+      final_reasoning: reasoning ? reasoning.substring(0, 100) + '...' : 'NONE',
+      has_reasoning: data.ai_message.has_reasoning,
+      reasoning_length: reasoning?.length || 0
+    });
+    
+    if (reasoning) {
+      console.log(`🧠 Full reasoning content: ${reasoning}`);
+    } else {
+      console.log(`❌ No reasoning content found in backend response`);
+    }
 
     // Create AI SDK compatible streaming response with structured content
     const encoder = new TextEncoder();
@@ -93,16 +134,11 @@ export async function POST(req: Request) {
       async start(controller) {
         try {
           // Helper function to safely encode and send chunks
-          const sendChunk = async (text: string, delay: number = 50) => {
+          const sendChunk = async (text: string, delay: number = 30) => {
             if (controller.desiredSize === null) return; // Controller is closed
             
-            // Properly escape the text for JSON
-            const escapedText = text
-              .replace(/\\/g, '\\\\')  // Escape backslashes first
-              .replace(/"/g, '\\"')    // Escape quotes
-              .replace(/\n/g, '\\n')   // Escape newlines
-              .replace(/\r/g, '\\r')   // Escape carriage returns
-              .replace(/\t/g, '\\t');  // Escape tabs
+            // Properly escape the text for JSON - handle all cases safely
+            const escapedText = JSON.stringify(text).slice(1, -1); // Use JSON.stringify and remove outer quotes
             
             const chunk = `0:"${escapedText}"\n`;
             controller.enqueue(encoder.encode(chunk));
@@ -115,98 +151,198 @@ export async function POST(req: Request) {
           // 1. Add follow-up indicator if this is a follow-up query
           if (isFollowUp && followUpContext) {
             await sendChunk('🔗 **Follow-up Response:**\n\n', 100);
-            await sendChunk('<details>\n<summary>Conversation Context</summary>\n\n', 50);
-            
-            if (followUpContext.detected_phrases?.length > 0) {
-              await sendChunk(`*Detected follow-up phrases: ${followUpContext.detected_phrases.join(', ')}*\n\n`, 50);
-            }
             
             if (followUpContext.previous_topic) {
-              await sendChunk(`*Previous topic: ${followUpContext.previous_topic.substring(0, 100)}...*\n\n`, 50);
+              await sendChunk(`*Building on our previous discussion about ${followUpContext.previous_topic.substring(0, 50)}...*\n\n`, 50);
             }
-            
-            await sendChunk('</details>\n\n', 100);
           }
           
-          // 2. Stream reasoning process if available (ChatGPT style)
-          if (reasoning.trim()) {
-            await sendChunk('<div class="reasoning-section">\n', 50);
-            await sendChunk('<details class="reasoning-details">\n', 50);
-            await sendChunk('<summary class="reasoning-summary">💭 Reasoning</summary>\n', 50);
-            await sendChunk('<div class="reasoning-content">\n\n', 50);
+          // 2. Add reasoning section first with ChatGPT-style collapsible dropdown
+          if (reasoning?.trim()) {
+            console.log('🧠 Adding reasoning to response, length:', reasoning.length, 'characters');
             
-            // Stream reasoning in smaller chunks
-            const reasoningChunks = reasoning.split('. ');
-            for (let i = 0; i < reasoningChunks.length; i++) {
-              const chunk = reasoningChunks[i] + (i < reasoningChunks.length - 1 ? '. ' : '');
-              await sendChunk(chunk, 80);
-            }
+            // Create a ChatGPT-style collapsible reasoning section
+            await sendChunk('\n\n---\n\n', 50);
             
-            await sendChunk('\n\n</div>\n</details>\n</div>\n\n', 100);
+            const reasoningHtml = `
+<style>
+  .reasoning-summary {
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+    padding: 16px 20px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 15px;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    user-select: none;
+    border: none;
+    outline: none;
+    transition: all 0.2s ease;
+    position: relative;
+  }
+  .reasoning-summary:hover {
+    background: linear-gradient(135deg, #f1f3f4 0%, #e0e3e6 100%);
+  }
+  .reasoning-chevron {
+    color: #6b7280;
+    transition: transform 0.2s ease;
+    transform: rotate(0deg);
+  }
+  .reasoning-details[open] .reasoning-chevron {
+    transform: rotate(180deg);
+  }
+</style>
+<details class="reasoning-details" style="
+  margin: 20px 0;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+">
+  <summary class="reasoning-summary">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: #10a37f; flex-shrink: 0;">
+      <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+    </svg>
+    <span style="flex: 1;">Reasoning</span>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="reasoning-chevron">
+      <polyline points="6,9 12,15 18,9"/>
+    </svg>
+  </summary>
+  <div style="
+    padding: 24px;
+    background: #ffffff;
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    line-height: 1.6;
+    color: #374151;
+  ">
+    <div style="
+      background: #f9fafb;
+      padding: 20px;
+      border-radius: 8px;
+      border: 1px solid rgba(0, 0, 0, 0.05);
+      position: relative;
+    ">
+      <div style="
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+        background: linear-gradient(to bottom, #10a37f, #0d8f6b);
+        border-radius: 2px 0 0 2px;
+      "></div>
+      <div style="
+        font-size: 14px;
+        line-height: 1.7;
+        color: #1f2937;
+        padding-left: 16px;
+        white-space: pre-wrap;
+      ">${reasoning.replace(/\n/g, '<br>')}</div>
+    </div>
+    <div style="
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: rgba(16, 163, 127, 0.05);
+      border: 1px solid rgba(16, 163, 127, 0.2);
+      border-radius: 8px;
+      font-size: 13px;
+      color: #0d8f6b;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    ">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <path d="m9,12 2,2 4,-4"/>
+      </svg>
+      <span>This reasoning was generated by our AI to explain the thought process behind the response.</span>
+    </div>
+  </div>
+</details>
+
+<style>
+details[open] summary svg:last-child {
+  transform: rotate(180deg) !important;
+}
+details summary::-webkit-details-marker {
+  display: none;
+}
+details summary::marker {
+  content: "";
+}
+</style>`;
+            
+            await sendChunk(reasoningHtml, 30);
+            await sendChunk('\n\n---\n\n', 50);
           }
           
-          // 3. Stream the main AI response directly without label
-          // Stream main response word by word
+          // 3. Stream the main AI response (the actual answer)
           const words = aiResponse.split(' ');
           for (let i = 0; i < words.length; i++) {
             if (controller.desiredSize === null) break; // Controller is closed
             
             const word = words[i] + (i < words.length - 1 ? ' ' : '');
-            await sendChunk(word, 80);
+            await sendChunk(word, 20);
           }
           
-          // 4. Add PDF download links at the end if available
+          // 4. Add sources section last (supporting documents)
           if (sources.length > 0) {
-            const pdfSources = sources.filter((source: any) => source.filename && source.filename !== 'Unknown');
-            if (pdfSources.length > 0) {
-              await sendChunk('\n\n', 50);
+            console.log('📁 Adding sources to response, count:', sources.length);
+            
+            await sendChunk('\n\n---\n\n', 50);
+            await sendChunk('### 📁 Source Documents\n\n', 50);
+            
+            for (let i = 0; i < sources.length; i++) {
+              const source = sources[i];
               
-              for (let i = 0; i < pdfSources.length; i++) {
-                const source = pdfSources[i];
-                const downloadUrl = `http://localhost:5000/api/files/download/${encodeURIComponent(source.filename)}`;
-                await sendChunk(`<a href="${downloadUrl}" target="_blank" rel="noopener noreferrer" download="${source.filename}">${source.filename}</a> `, 30);
+              // Better title extraction with fallbacks
+              let title = 'Unknown Document';
+              
+              // Try to get title from various fields
+              if (source.title && source.title !== source.filename) {
+                title = source.title;
+              } else if (source.document_title) {
+                title = source.document_title;
+              } else if (source.name) {
+                title = source.name;
+              } else if (source.filename) {
+                // Clean up filename if it looks like a UUID
+                if (source.filename.match(/^[a-f0-9\-\s]+$/i)) {
+                  title = `Document ${i + 1}`;
+                } else {
+                  // Remove file extension and clean filename
+                  title = source.filename.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
+                }
+              } else {
+                title = `Document ${i + 1}`;
               }
+              
+              const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+              
+              // Generate download URL if not provided
+              let downloadUrl = source.download_url;
+              if (!downloadUrl || !downloadUrl.startsWith('http')) {
+                downloadUrl = `${backendUrl}/api/files/download/${encodeURIComponent(source.filename || '')}`;
+              }
+              
+              // Add source as markdown with proper formatting
+              await sendChunk(`**${i + 1}. ${title}**\n`, 20);
+              
+              if (source.excerpt) {
+                const excerpt = source.excerpt.substring(0, 150) + (source.excerpt.length > 150 ? '...' : '');
+                await sendChunk(`*${excerpt}*\n`, 10);
+              } else if (source.department || source.sub_department) {
+                const deptInfo = [source.department, source.sub_department].filter(Boolean).join(' › ');
+                await sendChunk(`*Department: ${deptInfo}*\n`, 10);
+              }
+              
+              await sendChunk(`[📄 Download PDF](${downloadUrl})\n\n`, 30);
             }
           }
-          
-          // Sources section disabled per user request - clean UI with no technical metadata
-          // if (sources.length > 0) {
-          //   await sendChunk('\n\n---\n\n📚 **Sources & References:**\n\n', 100);
-          //   await sendChunk('<details>\n<summary>View Source Documents</summary>\n\n', 50);
-          //   
-          //   for (let i = 0; i < sources.length; i++) {
-          //     const source = sources[i];
-          //     await sendChunk(`**Source ${i + 1}:**\n`, 30);
-          //     await sendChunk(`- **Document:** ${source.filename || 'Unknown'}\n`, 30);
-          //     await sendChunk(`- **Relevance Score:** ${(source.relevance_score || 0).toFixed(3)}\n`, 30);
-          //     
-          //     if (source.total_pages) {
-          //       await sendChunk(`- **Total Pages:** ${source.total_pages}\n`, 30);
-          //     }
-          //     
-          //     if (source.page) {
-          //       await sendChunk(`- **Page:** ${source.page}\n`, 30);
-          //     }
-          //     
-          //     if (source.content) {
-          //       const snippet = source.content.substring(0, 200);
-          //       await sendChunk(`- **Content:** ${snippet}...\n`, 30);
-          //     }
-          //     
-          //     if (source.download_available && source.filename) {
-          //       await sendChunk(`- **[Download PDF](http://localhost:5000/api/files/download/${source.filename})**\n`, 30);
-          //       if (source.file_size_mb) {
-          //         await sendChunk(`- **File Size:** ${source.file_size_mb.toFixed(1)} MB\n`, 30);
-          //       }
-          //     } else if (source.filename && source.filename !== 'Unknown') {
-          //       await sendChunk(`- **[Download PDF](http://localhost:5000/api/files/download/${source.filename})** _(File may not be available)_\n`, 30);
-          //     }
-          //     
-          //     await sendChunk('\n', 30);
-          //   }
-          //   
-          //   await sendChunk(`\n**Confidence Score:** ${(confidence * 100).toFixed(1)}%\n\n</details>`, 50);
-          // }
           
           // Send finish signal only if controller is still open
           if (controller.desiredSize !== null) {

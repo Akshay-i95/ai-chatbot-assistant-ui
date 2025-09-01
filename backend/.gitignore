@@ -1,0 +1,56 @@
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+env/
+ENV/
+
+# Log files
+*.log
+backend.log
+
+# Test files and debug outputs
+test_*.py
+debug_*.py
+*_test_results_*.json
+reasoning_test_output.json
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Vector store data (when using local storage)
+vector_store/
+chroma_db/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Migration scripts (once complete)
+migrate_*.py
+verify_migration.py
+
+# Analysis and diagnostic files
+analyze_*.py
+list_azure_*.py
+simple_azure_*.py
+codebase_review.md
+
+# Environment variables (keep template only)
+.env.local
+.env.backup

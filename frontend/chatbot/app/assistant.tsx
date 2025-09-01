@@ -9,6 +9,9 @@ import { Separator } from "@/components/ui/separator";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { useEffect, useMemo } from "react";
 
+// Configure backend URL - ensure it's properly defined
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+
 export const Assistant = () => {
   // Configure the cloud service
   const cloud = useMemo(() => {
@@ -32,14 +35,20 @@ export const Assistant = () => {
     cloud: cloud,
   });
 
-  // Debug cloud connection
+  // Debug cloud and backend connections
   useEffect(() => {
-    console.log("Cloud Config:", {
-      baseUrl: process.env.NEXT_PUBLIC_ASSISTANT_BASE_URL,
-      hasApiKey: !!process.env.NEXT_PUBLIC_ASSISTANT_API_KEY,
-      workspaceId: process.env.NEXT_PUBLIC_ASSISTANT_WORKSPACE_ID,
-      cloudConfigured: !!cloud,
+    console.log("Environment Setup:", {
+      backendUrl: BACKEND_URL,
+      cloudConfig: {
+        baseUrl: process.env.NEXT_PUBLIC_ASSISTANT_BASE_URL,
+        hasApiKey: !!process.env.NEXT_PUBLIC_ASSISTANT_API_KEY,
+        workspaceId: process.env.NEXT_PUBLIC_ASSISTANT_WORKSPACE_ID,
+        cloudConfigured: !!cloud,
+      }
     });
+    
+    // Add backend URL to window for components to access
+    window.BACKEND_URL = BACKEND_URL;
   }, [cloud]);
 
   return (
@@ -62,3 +71,10 @@ export const Assistant = () => {
     </AssistantRuntimeProvider>
   );
 };
+
+// Add type declaration for window object
+declare global {
+  interface Window {
+    BACKEND_URL?: string;
+  }
+}

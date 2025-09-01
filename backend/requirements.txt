@@ -4,6 +4,9 @@ Flask-CORS>=4.0.0
 Flask-SQLAlchemy>=3.0.0
 python-dotenv>=1.0.0
 
+# AI/LLM Dependencies
+groq>=0.4.0
+
 # Core ML Dependencies from original app
 sentence-transformers>=2.2.0
 numpy>=1.26.0

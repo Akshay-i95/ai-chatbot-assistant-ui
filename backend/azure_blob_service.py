@@ -30,7 +30,7 @@ class AzureBlobDownloadService:
         self.logger = logging.getLogger(__name__)
         
         if not AZURE_AVAILABLE:
-            self.logger.error("❌ Azure Storage SDK not available. Install with: pip install azure-storage-blob")
+            self.logger.error("ERROR: Azure Storage SDK not available. Install with: pip install azure-storage-blob")
             raise ImportError("Azure Storage SDK not installed")
         
         # Load Azure configuration
@@ -61,10 +61,10 @@ class AzureBlobDownloadService:
             # Test connection
             self._test_connection()
             
-            self.logger.info("✅ Azure Blob Storage service initialized successfully")
+            self.logger.info("Azure Blob Storage service initialized successfully")
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to initialize Azure Blob Storage: {str(e)}")
+            self.logger.error(f"ERROR: Failed to initialize Azure Blob Storage: {str(e)}")
             raise
     
     def _test_connection(self):
@@ -73,11 +73,14 @@ class AzureBlobDownloadService:
             # Try to get container properties
             container_client = self.blob_service_client.get_container_client(self.container_name)
             container_client.get_container_properties()
-            self.logger.info(f"✅ Successfully connected to container: {self.container_name}")
+            self.logger.info(f"Successfully connected to container: {self.container_name}")
+            self.logger.info(f"Using folder path: {self.folder_path}")
+            return True
         except Exception as e:
-            self.logger.warning(f"⚠️ Connection test failed: {str(e)}")
+            self.logger.warning(f"WARNING: Connection test failed: {str(e)}")
             # Don't raise here - connection might still work for other operations
-    
+            return False
+
     def generate_download_url(self, filename: str, expiry_hours: int = 1) -> Optional[str]:
         """
         Generate a secure download URL with SAS token for a PDF file
@@ -90,18 +93,20 @@ class AzureBlobDownloadService:
             Secure download URL or None if file not found
         """
         try:
+            self.logger.info(f"Generating download URL for: {filename}")
+            
             # Find the correct blob path
             blob_name = self._find_blob_path(filename)
             
             if not blob_name:
-                self.logger.warning(f"⚠️ Blob not found for filename: {filename}")
+                self.logger.warning(f"WARNING: Blob not found for filename: {filename}")
                 return None
             
             # Generate SAS token
             sas_token = self._generate_sas_token(blob_name, expiry_hours)
             
             if not sas_token:
-                self.logger.error(f"❌ Failed to generate SAS token for: {blob_name}")
+                self.logger.error(f"ERROR: Failed to generate SAS token for: {blob_name}")
                 return None
             
             # Construct download URL
@@ -113,7 +118,7 @@ class AzureBlobDownloadService:
             return download_url
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to generate download URL for {filename}: {str(e)}")
+            self.logger.error(f"ERROR: Failed to generate download URL for {filename}: {str(e)}")
             return None
     
     def _construct_blob_name(self, filename: str) -> str:
@@ -155,34 +160,78 @@ class AzureBlobDownloadService:
     
     def _find_blob_path(self, filename: str) -> Optional[str]:
         """Find the correct blob path for a filename by trying different variations"""
-        # Try different path variations
-        possible_paths = [
-            filename,  # As-is
-            self._construct_blob_name(filename),  # With folder path
-        ]
-        
-        # If filename contains path separators, try just the basename
-        if '/' in filename:
-            basename = filename.split('/')[-1]
-            possible_paths.extend([
-                basename,
-                self._construct_blob_name(basename)
-            ])
-        
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_paths = []
-        for path in possible_paths:
-            if path not in seen:
-                seen.add(path)
-                unique_paths.append(path)
-        
-        # Try each path
-        for path in unique_paths:
-            if self._blob_exists(path):
-                return path
-        
-        return None
+        try:
+            # Log the filename and folder path for debugging
+            self.logger.info(f"Finding blob path for filename: {filename}, folder path: {self.folder_path}")
+            
+            # Try different path variations
+            possible_paths = [
+                filename,  # As-is
+                self._construct_blob_name(filename),  # With folder path
+            ]
+            
+            # If filename contains path separators, try just the basename
+            if '/' in filename:
+                basename = filename.split('/')[-1]
+                possible_paths.extend([
+                    basename,
+                    self._construct_blob_name(basename)
+                ])
+            
+            # If filename has extension, try without extension
+            base, ext = os.path.splitext(filename)
+            if ext:
+                possible_paths.extend([
+                    base,
+                    self._construct_blob_name(base)
+                ])
+            
+            # If no extension, try with common extensions
+            else:
+                possible_paths.extend([
+                    f"{filename}.pdf",
+                    self._construct_blob_name(f"{filename}.pdf"),
+                    f"{filename}.docx",
+                    self._construct_blob_name(f"{filename}.docx")
+                ])
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_paths = []
+            for path in possible_paths:
+                if path not in seen:
+                    seen.add(path)
+                    unique_paths.append(path)
+            
+            self.logger.info(f"Trying paths: {unique_paths}")
+            
+            # Try each path
+            for path in unique_paths:
+                if self._blob_exists(path):
+                    self.logger.info(f"Found blob at path: {path}")
+                    return path
+            
+            # Try listing blobs with a name containing the filename (fallback for partial match)
+            try:
+                container_client = self.blob_service_client.get_container_client(self.container_name)
+                prefix = self.folder_path.rstrip('/') + '/' if self.folder_path else None
+                
+                blobs = list(container_client.list_blobs(name_starts_with=prefix))
+                self.logger.info(f"Found {len(blobs)} blobs with prefix: {prefix}")
+                
+                # Try a fuzzy match on filename
+                for blob in blobs:
+                    if filename.lower() in blob.name.lower():
+                        self.logger.info(f"Found fuzzy match: {blob.name}")
+                        return blob.name
+            except Exception as e:
+                self.logger.warning(f"Fuzzy match search failed: {str(e)}")
+            
+            self.logger.warning(f"No matching blob found for {filename}")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error finding blob path: {str(e)}")
+            return None
     
     def _generate_sas_token(self, blob_name: str, expiry_hours: int) -> Optional[str]:
         """Generate SAS token for blob download"""
@@ -206,7 +255,7 @@ class AzureBlobDownloadService:
             return sas_token
             
         except Exception as e:
-            self.logger.error(f"❌ SAS token generation failed: {str(e)}")
+            self.logger.error(f"ERROR: SAS token generation failed: {str(e)}")
             return None
     
     def get_blob_info(self, filename: str) -> Optional[Dict]:
@@ -240,7 +289,7 @@ class AzureBlobDownloadService:
             }
             
         except Exception as e:
-            self.logger.warning(f"⚠️ Failed to get blob info for {filename}: {str(e)}")
+            self.logger.warning(f"WARNING: Failed to get blob info for {filename}: {str(e)}")
             return {
                 'filename': filename,
                 'exists': False,
@@ -270,11 +319,11 @@ class AzureBlobDownloadService:
                         'last_modified': blob.last_modified.isoformat() if blob.last_modified else None
                     })
             
-            self.logger.info(f"📁 Found {len(pdf_files)} PDF files in Azure storage")
+            self.logger.info(f"Found {len(pdf_files)} PDF files in Azure storage")
             return pdf_files
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to list PDF files: {str(e)}")
+            self.logger.error(f"ERROR: Failed to list PDF files: {str(e)}")
             return []
     
     def batch_generate_download_urls(self, filenames: List[str], expiry_hours: int = 1) -> Dict[str, Optional[str]]:
@@ -285,13 +334,111 @@ class AzureBlobDownloadService:
             download_urls[filename] = self.generate_download_url(filename, expiry_hours)
         
         successful = sum(1 for url in download_urls.values() if url is not None)
-        self.logger.info(f"✅ Generated {successful}/{len(filenames)} download URLs")
+        self.logger.info(f"Generated {successful}/{len(filenames)} download URLs")
+        
+        return download_urls
+    
+    def get_blob_info(self, filename: str) -> Optional[Dict]:
+        """Get blob information including size and last modified date"""
+        try:
+            # Find the correct blob path
+            blob_name = self._find_blob_path(filename)
+            
+            if not blob_name:
+                return {
+                    'filename': filename,
+                    'exists': False,
+                    'error': 'File not found in storage'
+                }
+            
+            blob_client = self.blob_service_client.get_blob_client(
+                container=self.container_name,
+                blob=blob_name
+            )
+            
+            properties = blob_client.get_blob_properties()
+            
+            return {
+                'filename': filename,
+                'blob_name': blob_name,
+                'size_bytes': properties.size,
+                'size_mb': round(properties.size / (1024 * 1024), 2),
+                'last_modified': properties.last_modified.isoformat() if properties.last_modified else None,
+                'content_type': properties.content_settings.content_type if properties.content_settings else 'application/pdf',
+                'exists': True
+            }
+            
+        except Exception as e:
+            self.logger.warning(f"WARNING: Failed to get blob info for {filename}: {str(e)}")
+            return {
+                'filename': filename,
+                'exists': False,
+                'error': str(e)
+            }
+    
+    def list_available_pdfs(self) -> List[Dict]:
+        """List all available PDF files in the container/folder"""
+        try:
+            container_client = self.blob_service_client.get_container_client(self.container_name)
+            
+            # Set prefix for folder if specified
+            prefix = self.folder_path.rstrip('/') + '/' if self.folder_path else None
+            
+            pdf_files = []
+            blobs = container_client.list_blobs(name_starts_with=prefix)
+            
+            for blob in blobs:
+                if blob.name.lower().endswith('.pdf'):
+                    # Extract filename from full blob path
+                    filename = blob.name.split('/')[-1] if '/' in blob.name else blob.name
+                    
+                    pdf_files.append({
+                        'filename': filename,
+                        'blob_name': blob.name,
+                        'size_mb': round(blob.size / (1024 * 1024), 2),
+                        'last_modified': blob.last_modified.isoformat() if blob.last_modified else None
+                    })
+            
+            self.logger.info(f"Found {len(pdf_files)} PDF files in Azure storage")
+            return pdf_files
+            
+        except Exception as e:
+            self.logger.error(f"ERROR: Failed to list PDF files: {str(e)}")
+            return []
+    
+    def batch_generate_download_urls(self, filenames: List[str], expiry_hours: int = 1) -> Dict[str, Optional[str]]:
+        """Generate download URLs for multiple files at once"""
+        download_urls = {}
+        
+        for filename in filenames:
+            download_urls[filename] = self.generate_download_url(filename, expiry_hours)
+        
+        successful = sum(1 for url in download_urls.values() if url is not None)
+        self.logger.info(f"Generated {successful}/{len(filenames)} download URLs")
         
         return download_urls
     
     def get_download_stats(self) -> Dict:
         """Get service statistics"""
         try:
+            # Check connection without calling list_containers with max_results
+            # This works with the latest Azure SDK
+            if self.connection_string:
+                service_client = BlobServiceClient.from_connection_string(self.connection_string)
+                # Just get the account name to verify connection
+                _ = service_client.account_name
+            else:
+                # Use account name and key
+                service_client = BlobServiceClient(
+                    account_url=f"https://{self.account_name}.blob.core.windows.net",
+                    credential=self.account_key
+                )
+                # Just get the account name to verify connection
+                _ = service_client.account_name
+                
+            self.logger.info(f"Connection test successful: {service_client.account_name}")
+            
+            # Now list PDFs
             pdf_files = self.list_available_pdfs()
             total_size_mb = sum(pdf.get('size_mb', 0) for pdf in pdf_files)
             
@@ -320,7 +467,7 @@ def create_azure_download_service(config: Dict = None) -> Optional[AzureBlobDown
         AzureBlobDownloadService instance or None if Azure not available
     """
     if not AZURE_AVAILABLE:
-        logging.getLogger(__name__).warning("⚠️ Azure Storage SDK not available")
+        logging.getLogger(__name__).warning("WARNING: Azure Storage SDK not available")
         return None
     
     try:
@@ -329,6 +476,6 @@ def create_azure_download_service(config: Dict = None) -> Optional[AzureBlobDown
         
         return AzureBlobDownloadService(config)
     except Exception as e:
-        logging.getLogger(__name__).error(f"❌ Failed to create Azure download service: {str(e)}")
+        logging.getLogger(__name__).error(f"ERROR: Failed to create Azure download service: {str(e)}")
         return None
 

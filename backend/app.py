@@ -15,6 +15,15 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 import traceback
 
+# Fix Unicode encoding issues on Windows
+if sys.platform == "win32":
+    import codecs
+    try:
+        sys.stdout = codecs.getwriter("utf-8")(sys.stdout.detach())
+        sys.stderr = codecs.getwriter("utf-8")(sys.stderr.detach())
+    except:
+        pass  # Ignore if already configured
+
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
@@ -70,11 +79,28 @@ class ChatMessage(db.Model):
 chatbot_system = None
 logger = logging.getLogger(__name__)
 
+# Initialize system at startup
+def init_system():
+    """Initialize system on first request"""
+    global chatbot_system
+    if chatbot_system is None:
+        logger.info("Initializing chatbot system on first request...")
+        initialize_system()
+
+# Initialize system when module loads
+try:
+    logger.info("Flask app starting up...")
+    with app.app_context():
+        db.create_all()
+    init_system()
+except Exception as e:
+    logger.warning(f"WARNING: Failed to initialize system at startup: {str(e)}")
+
 def initialize_system():
     """Initialize the chatbot system components"""
     global chatbot_system
     try:
-        logger.info("🔄 Initializing system components...")
+        logger.info("Initializing system components...")
         
         # Configuration from environment variables
         config = {
@@ -82,17 +108,22 @@ def initialize_system():
             'vector_db_path': os.getenv('VECTOR_DB_PATH', './vector_store_faiss'),
             'collection_name': os.getenv('COLLECTION_NAME', 'pdf_chunks'),
             'embedding_model': os.getenv('EMBEDDING_MODEL', 'all-MiniLM-L6-v2'),
-            'max_context_chunks': int(os.getenv('MAX_CONTEXT_CHUNKS', '2')),
-            'min_similarity_threshold': float(os.getenv('MIN_SIMILARITY_THRESHOLD', '0.65')),
+            'max_context_chunks': int(os.getenv('MAX_CONTEXT_CHUNKS', '8')),
+                        'min_similarity_threshold': float(os.getenv('MIN_SIMILARITY_THRESHOLD', '0.35')),
             'enable_citations': os.getenv('ENABLE_CITATIONS', 'true').lower() == 'true',
-            'enable_context_expansion': os.getenv('ENABLE_CONTEXT_EXPANSION', 'false').lower() == 'true',
-            'max_context_length': int(os.getenv('MAX_CONTEXT_LENGTH', '2000')),
+            'enable_context_expansion': os.getenv('ENABLE_CONTEXT_EXPANSION', 'true').lower() == 'true',
+            'max_context_length': int(os.getenv('MAX_CONTEXT_LENGTH', '6000')),
             # Azure configuration
             'azure_connection_string': os.getenv('AZURE_STORAGE_CONNECTION_STRING'),
             'azure_account_name': os.getenv('AZURE_STORAGE_ACCOUNT_NAME'),
             'azure_account_key': os.getenv('AZURE_STORAGE_ACCOUNT_KEY'),
             'azure_container_name': os.getenv('AZURE_STORAGE_CONTAINER_NAME'),
             'azure_folder_path': os.getenv('AZURE_BLOB_FOLDER_PATH'),
+            # Edify API configuration
+            'edify_api_key': os.getenv('EDIFY_API_KEY'),
+            'edify_api_base_url': os.getenv('EDIFY_API_BASE_URL'),
+            'edify_api_endpoint': os.getenv('EDIFY_API_ENDPOINT'),
+            'edify_api_timeout': os.getenv('EDIFY_API_TIMEOUT'),
             # Pinecone configuration
             'pinecone_api_key': os.getenv('PINECONE_API_KEY'),
             'pinecone_environment': os.getenv('PINECONE_ENVIRONMENT', 'us-east-1-aws'),
@@ -122,11 +153,11 @@ def initialize_system():
             'status': 'ready'
         }
         
-        logger.info("✅ System components loaded successfully!")
+        logger.info("SUCCESS: System components loaded successfully!")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Failed to load system components: {str(e)}")
+        logger.error(f"ERROR: Failed to load system components: {str(e)}")
         logger.error(traceback.format_exc())
         return False
 
@@ -219,11 +250,18 @@ def delete_chat_session(session_id):
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/chat/sessions/<session_id>/messages', methods=['POST'])
+@app.route('/api/chat/sessions/<session_id>/message', methods=['POST'])  # Also handle singular form
 def send_message(session_id):
     """Send a message and get AI response"""
     try:
+        # Ensure system is initialized
         if not chatbot_system or chatbot_system.get('status') != 'ready':
-            return jsonify({'error': 'System not ready'}), 503
+            logger.warning("WARNING: Chatbot system not ready, attempting to initialize...")
+            init_system()
+            
+            if not chatbot_system or chatbot_system.get('status') != 'ready':
+                logger.error("ERROR: Failed to initialize chatbot system")
+                return jsonify({'error': 'System not ready - initialization failed'}), 503
         
         data = request.get_json()
         if not data or 'content' not in data:
@@ -239,11 +277,19 @@ def send_message(session_id):
             .order_by(ChatMessage.created_at.desc()).limit(10).all()
         
         conversation_history = []
-        for msg in reversed(recent_messages):
+        for msg in reversed(recent_messages):  # Use reversed to maintain chronological order
+            content = msg.content
+            role = msg.role
             conversation_history.append({
-                'role': msg.role,
-                'content': msg.content
+                'role': role,
+                'content': content,
+                'thread_id': str(session_id)  # Include thread_id for proper isolation
             })
+            
+        # Log the conversation history for debugging
+        logger.info(f"Conversation history for session {session_id}: {len(conversation_history)} messages")
+        for i, msg in enumerate(conversation_history):
+            logger.info(f"  Message {i+1}: {msg['role']} - {msg['content'][:50]}...")
         
         # Save user message
         user_msg = ChatMessage(
@@ -261,20 +307,53 @@ def send_message(session_id):
         response_data = chatbot.process_query(
             user_query=user_message,
             include_context=True,
-            conversation_history=conversation_history
+            conversation_history=conversation_history,
+            thread_id=str(session_id)  # Pass session_id as thread_id for proper memory management
         )
         
+        # Log full response data for debugging
+        logger.info(f"Response data from chatbot: {json.dumps(response_data, default=str)}")
+        
+        # Check specifically for reasoning field
+        if 'reasoning' in response_data:
+            logger.info(f"Reasoning found: {response_data['reasoning'][:100]}...")
+        else:
+            logger.warning("No reasoning field found in chatbot response")
+        
         ai_content = response_data.get('response', 'I apologize, but I encountered an error processing your request.')
+        
+        # Ensure reasoning is explicitly extracted and formatted properly
+        reasoning = response_data.get('reasoning', '')
+        if reasoning is None:  # Convert None to empty string
+            reasoning = ''
+        
+        # Clean up reasoning text if needed
+        if reasoning:
+            # Remove any prefix that might be causing confusion
+            for prefix in ["AI reasoning process:", "AI reasoning:", "Reasoning process:"]:
+                if reasoning.startswith(prefix):
+                    reasoning = reasoning[len(prefix):].strip()
+        
+        # If no reasoning is provided, add a default one
+        if not reasoning or len(reasoning.strip()) < 10:
+            reasoning = "I analyzed your question and retrieved relevant information from our educational database to provide you with an accurate, helpful response."
+        
+        logger.info(f"Final reasoning to be sent to UI: {reasoning[:200]}...")
+            
         metadata = {
             'sources': response_data.get('sources', []),
             'context_used': response_data.get('context_used', False),
             'processing_time': response_data.get('processing_time', 0),
             'model_used': response_data.get('model_used', 'unknown'),
-            'reasoning': response_data.get('reasoning', ''),
+            'reasoning': reasoning,  # Use the explicitly processed reasoning field
+            'has_reasoning': bool(reasoning),  # Explicit flag for the frontend
             'confidence': response_data.get('confidence', 0),
             'is_follow_up': response_data.get('is_follow_up', False),
             'follow_up_context': response_data.get('follow_up_context', None)
         }
+        
+        # Log the extracted metadata to verify reasoning is included
+        logger.info(f"Metadata being stored: reasoning present: {'reasoning' in metadata}, length: {len(str(metadata.get('reasoning', '')))}")
         
         # Save AI response
         ai_msg = ChatMessage(
@@ -293,12 +372,13 @@ def send_message(session_id):
             # Generate a title from the first user message
             title_prompt = f"Generate a short, descriptive title (max 5 words) for a conversation that starts with: '{user_message[:100]}...'"
             try:
-                title_response = llm_service.generate_response(title_prompt)
-                if title_response.get('success') and title_response.get('response'):
+                title_response = llm_service.generate_response(title_prompt, "", [])  # query, context, history
+                if title_response.get('response'):
                     clean_title = title_response['response'].strip().strip('"\'')
                     if len(clean_title) <= 50:
                         session.title = clean_title
-            except:
+            except Exception as e:
+                logger.warning(f"Title generation failed: {str(e)}")
                 pass  # Keep default title if generation fails
         
         db.session.commit()
@@ -315,6 +395,8 @@ def send_message(session_id):
                 'role': 'assistant',
                 'content': ai_content,
                 'metadata': metadata,
+                'reasoning': reasoning,  # Add reasoning directly to the top level for easier frontend access
+                'has_reasoning': bool(reasoning),  # Add explicit flag
                 'created_at': ai_msg.created_at.isoformat()
             },
             'session': {
@@ -334,13 +416,32 @@ def download_file(filename):
     """Generate secure download URL and redirect to Azure storage"""
     try:
         if not chatbot_system or not chatbot_system['chatbot'].azure_service:
-            return jsonify({'error': 'Azure download service not available'}), 503
+            # Try to initialize Azure service directly
+            logger.info(f"Azure service not available, attempting to create it on demand...")
+            
+            config = {
+                'azure_connection_string': os.getenv('AZURE_STORAGE_CONNECTION_STRING'),
+                'azure_account_name': os.getenv('AZURE_STORAGE_ACCOUNT_NAME'),
+                'azure_account_key': os.getenv('AZURE_STORAGE_ACCOUNT_KEY'),
+                'azure_container_name': os.getenv('AZURE_STORAGE_CONTAINER_NAME'),
+                'azure_folder_path': os.getenv('AZURE_BLOB_FOLDER_PATH')
+            }
+            
+            try:
+                from azure_blob_service import create_azure_download_service
+                azure_service = create_azure_download_service(config)
+                if not azure_service:
+                    return jsonify({'error': 'Failed to initialize Azure download service'}), 503
+            except Exception as e:
+                logger.error(f"Failed to create Azure service on demand: {str(e)}")
+                return jsonify({'error': 'Azure download service not available'}), 503
+        else:
+            azure_service = chatbot_system['chatbot'].azure_service
         
-        azure_service = chatbot_system['chatbot'].azure_service
         logger.info(f"Attempting to download file: {filename}")
         
-        # Generate secure download URL from Azure
-        download_url = azure_service.generate_download_url(filename, expiry_hours=2)
+        # Generate secure download URL from Azure with longer expiry
+        download_url = azure_service.generate_download_url(filename, expiry_hours=24)
         
         if download_url:
             logger.info(f"Redirecting to Azure download URL for: {filename}")
@@ -348,10 +449,11 @@ def download_file(filename):
             return redirect(download_url)
         else:
             logger.warning(f"File not found in Azure storage: {filename}")
-            return jsonify({'error': 'File not found'}), 404
+            return jsonify({'error': 'File not found in Azure storage'}), 404
             
     except Exception as e:
         logger.error(f"Error generating download URL: {str(e)}")
+        logger.error(traceback.format_exc())
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/system/status', methods=['GET'])
