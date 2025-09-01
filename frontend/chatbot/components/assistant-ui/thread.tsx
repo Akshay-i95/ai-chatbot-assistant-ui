@@ -21,7 +21,7 @@ import {
   BookIcon,
   ExternalLinkIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn } from "../utils";
 import { useState, useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
