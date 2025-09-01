@@ -54,3 +54,4 @@ codebase_review.md
 # Environment variables (keep template only)
 .env.local
 .env.backup
+.env.production

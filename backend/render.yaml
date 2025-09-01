@@ -5,7 +5,7 @@ services:
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: python app.py
+    startCommand: python lightweight_app.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
