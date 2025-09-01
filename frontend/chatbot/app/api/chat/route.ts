@@ -28,70 +28,35 @@ export async function POST(req: Request) {
     }
 
     // Get backend URL from environment variables
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || 'http://localhost:5000';
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || 'https://ai-chatbot-assistant-ui-exgbfhbl4am4yrjopzgt8a.streamlit.app';
     
-    // First, try to get existing sessions to use the latest one, or create a new one
-    let sessionId;
-    try {
-      const sessionsResponse = await fetch(`${backendUrl}/api/chat/sessions`);
-      if (sessionsResponse.ok) {
-        const sessions = await sessionsResponse.json();
-        sessionId = sessions.length > 0 ? sessions[0].id : null;
+    // Streamlit backend uses a different API structure - direct chat API
+    // Convert messages to the format expected by Streamlit backend
+    const streamlitMessages = messages.map((msg: any) => {
+      let content = '';
+      if (typeof msg.content === 'string') {
+        content = msg.content;
+      } else if (Array.isArray(msg.content)) {
+        const textPart = msg.content.find((part: any) => part.type === 'text');
+        content = textPart?.text || '';
       }
-    } catch (error) {
-      console.log('Could not fetch existing sessions, will create new one');
-    }
-
-    // Create new session if none exists
-    if (!sessionId) {
-      const createSessionResponse = await fetch(`${backendUrl}/api/chat/sessions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: 'Chat Session'
-        }),
-      });
       
-      if (createSessionResponse.ok) {
-        const session = await createSessionResponse.json();
-        sessionId = session.id;
-      } else {
-        throw new Error('Failed to create session');
-      }
-    }
-
-    // Include previous messages for better follow-up context (up to 5 recent messages)
-    const recentMessages = messages
-      .slice(-6, -1) // Get up to 5 previous messages, excluding the current one
-      .map((msg: any) => {
-        // Convert to format expected by backend
-        let content = '';
-        if (typeof msg.content === 'string') {
-          content = msg.content;
-        } else if (Array.isArray(msg.content)) {
-          const textPart = msg.content.find((part: any) => part.type === 'text');
-          content = textPart?.text || '';
-        }
-        
-        return {
-          role: msg.role,
-          content: content
-        };
-      });
+      return {
+        role: msg.role,
+        content: content
+      };
+    });
     
-    console.log(`Sending message with ${recentMessages.length} previous messages for context`);
+    console.log(`Sending ${streamlitMessages.length} messages to Streamlit backend`);
 
-    // Send message to backend
-    const response = await fetch(`${backendUrl}/api/chat/sessions/${sessionId}/messages`, {
+    // Send message directly to Streamlit backend API
+    const response = await fetch(`${backendUrl}/?api=chat`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        content: messageContent,
-        conversation_history: recentMessages.length > 0 ? recentMessages : undefined
+        messages: streamlitMessages
       }),
     });
 
@@ -100,25 +65,37 @@ export async function POST(req: Request) {
     }
 
     const data = await response.json();
-    const aiResponse = data.ai_message.content;
     
-    // Extract metadata from both top-level fields and metadata object
-    const metadata = data.ai_message.metadata || {};
+    // Handle Streamlit backend response format
+    let aiResponse, reasoning, sources, confidence, isFollowUp, followUpContext;
     
-    // Try getting reasoning from both places (direct field or metadata)
-    const reasoning = data.ai_message.reasoning || metadata.reasoning || '';
-    const sources = metadata.sources || [];
-    const confidence = metadata.confidence || 0;
-    const isFollowUp = metadata.is_follow_up || false;
-    const followUpContext = metadata.follow_up_context || null;
+    if (data.error) {
+      // Handle error response from Streamlit
+      aiResponse = data.ai_message?.content || 'I apologize, but I encountered an error processing your request.';
+      reasoning = data.ai_message?.reasoning || '';
+      sources = [];
+      confidence = 0;
+      isFollowUp = false;
+      followUpContext = null;
+    } else {
+      // Handle successful response from Streamlit
+      aiResponse = data.ai_message.content;
+      reasoning = data.ai_message.reasoning || '';
+      
+      const metadata = data.ai_message.metadata || {};
+      sources = metadata.sources || [];
+      confidence = metadata.confidence || 0;
+      isFollowUp = metadata.is_follow_up || false;
+      followUpContext = metadata.follow_up_context || null;
+    }
     
     // Log reasoning data for debugging
     console.log(`🧠 Backend reasoning data:`, {
-      direct_reasoning: data.ai_message.reasoning ? data.ai_message.reasoning.substring(0, 100) + '...' : 'NONE',
-      metadata_reasoning: metadata.reasoning ? metadata.reasoning.substring(0, 100) + '...' : 'NONE',
+      direct_reasoning: reasoning ? reasoning.substring(0, 100) + '...' : 'NONE',
       final_reasoning: reasoning ? reasoning.substring(0, 100) + '...' : 'NONE',
-      has_reasoning: data.ai_message.has_reasoning,
-      reasoning_length: reasoning?.length || 0
+      reasoning_length: reasoning?.length || 0,
+      sources_count: sources.length,
+      confidence: confidence
     });
     
     if (reasoning) {
