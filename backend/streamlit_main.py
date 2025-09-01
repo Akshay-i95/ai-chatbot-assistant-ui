@@ -49,7 +49,8 @@ def get_config():
                 'edify_api_endpoint': st.secrets.get('EDIFY_API_ENDPOINT', os.getenv('EDIFY_API_ENDPOINT', '/edi-pedia/sop-all')),
                 'pinecone_api_key': st.secrets.get('PINECONE_API_KEY', os.getenv('PINECONE_API_KEY')),
                 'pinecone_environment': st.secrets.get('PINECONE_ENVIRONMENT', os.getenv('PINECONE_ENVIRONMENT', 'us-east-1')),
-                'pinecone_index_name': st.secrets.get('PINECONE_INDEX_NAME', os.getenv('PINECONE_INDEX_NAME', 'edify-chatbot'))
+                'pinecone_index_name': st.secrets.get('PINECONE_INDEX_NAME', os.getenv('PINECONE_INDEX_NAME', 'edify-chatbot')),
+                'vector_db_type': st.secrets.get('VECTOR_DB_TYPE', os.getenv('VECTOR_DB_TYPE', 'pinecone'))
             })
         except:
             pass
@@ -68,7 +69,8 @@ def get_config():
             'edify_api_endpoint': os.getenv('EDIFY_API_ENDPOINT', '/edi-pedia/sop-all'),
             'pinecone_api_key': os.getenv('PINECONE_API_KEY'),
             'pinecone_environment': os.getenv('PINECONE_ENVIRONMENT', 'us-east-1'),
-            'pinecone_index_name': os.getenv('PINECONE_INDEX_NAME', 'edify-chatbot')
+            'pinecone_index_name': os.getenv('PINECONE_INDEX_NAME', 'edify-chatbot'),
+            'vector_db_type': os.getenv('VECTOR_DB_TYPE', 'pinecone')
         })
     
     return config
@@ -192,7 +194,7 @@ def process_chat_message(messages: List[Dict]) -> Dict:
         else:
             # Fallback to LLM service only
             response = services['llm_service'].generate_response(
-                message=content,
+                query=content,
                 context="",
                 conversation_history=conversation_history
             )
