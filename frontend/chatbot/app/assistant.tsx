@@ -1,7 +1,8 @@
 "use client";
 
 import { AssistantRuntimeProvider, AssistantCloud } from "@assistant-ui/react";
-import { useChatRuntime } from "@assistant-ui/react-ai-sdk";
+import { useAISDKRuntime } from "@assistant-ui/react-ai-sdk";
+import { useChat } from "@ai-sdk/react";
 import { Thread } from "@/components/assistant-ui/thread";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -13,43 +14,21 @@ import { useEffect, useMemo } from "react";
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
 
 export const Assistant = () => {
-  // Configure the cloud service
-  const cloud = useMemo(() => {
-    if (
-      process.env.NEXT_PUBLIC_ASSISTANT_BASE_URL && 
-      process.env.NEXT_PUBLIC_ASSISTANT_API_KEY && 
-      process.env.NEXT_PUBLIC_ASSISTANT_WORKSPACE_ID
-    ) {
-      return new AssistantCloud({
-        baseUrl: process.env.NEXT_PUBLIC_ASSISTANT_BASE_URL,
-        apiKey: process.env.NEXT_PUBLIC_ASSISTANT_API_KEY,
-        workspaceId: process.env.NEXT_PUBLIC_ASSISTANT_WORKSPACE_ID,
-        userId: "default-user", // Use a default user ID
-      });
-    }
-    return undefined;
-  }, []);
+  // Set up the useChat hook from AI SDK
+  const chat = useChat();
 
-  const runtime = useChatRuntime({
-    api: "/api/chat",
-    cloud: cloud,
-  });
+  // Use the AI SDK runtime adapter
+  const runtime = useAISDKRuntime(chat);
 
-  // Debug cloud and backend connections
+  // Debug backend connections
   useEffect(() => {
     console.log("Environment Setup:", {
       backendUrl: BACKEND_URL,
-      cloudConfig: {
-        baseUrl: process.env.NEXT_PUBLIC_ASSISTANT_BASE_URL,
-        hasApiKey: !!process.env.NEXT_PUBLIC_ASSISTANT_API_KEY,
-        workspaceId: process.env.NEXT_PUBLIC_ASSISTANT_WORKSPACE_ID,
-        cloudConfigured: !!cloud,
-      }
     });
     
     // Add backend URL to window for components to access
     window.BACKEND_URL = BACKEND_URL;
-  }, [cloud]);
+  }, []);
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
