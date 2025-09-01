@@ -27,8 +27,8 @@ export async function POST(req: Request) {
       return new Response('Empty message content', { status: 400 });
     }
 
-    // Get or create a session (for now we'll use a default session)
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:5000';
+    // Get backend URL from environment variables
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || process.env.BACKEND_URL || 'http://localhost:5000';
     
     // First, try to get existing sessions to use the latest one, or create a new one
     let sessionId;

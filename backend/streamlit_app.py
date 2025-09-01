@@ -183,7 +183,7 @@ def main():
     st.markdown("**Streamlit-powered backend for AI chatbot**")
     
     # Check if this is an API call
-    query_params = st.experimental_get_query_params()
+    query_params = st.query_params
     
     if 'api' in query_params and query_params['api'][0] == 'chat':
         # API endpoint mode

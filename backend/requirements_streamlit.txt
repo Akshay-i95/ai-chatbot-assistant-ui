@@ -1,32 +1,46 @@
-# Streamlit Backend Requirements
+# Streamlit deployment requirements
+# Core Streamlit
 streamlit>=1.28.0
 
-# Flask Backend Dependencies (kept for compatibility)
-Flask==3.1.2
-Flask-CORS==6.0.1
-Flask-SQLAlchemy==3.1.1
-python-dotenv==1.1.1
+# Web framework dependencies
+flask>=2.3.0
+flask-cors>=4.0.0
+flask-sqlalchemy>=3.0.0
 
-# AI/LLM Dependencies
-groq==0.31.0
+# AI and ML dependencies
+groq>=0.4.0
+openai>=1.0.0
 
-# Core ML Dependencies
-sentence-transformers==5.1.0
-numpy==2.3.2
-faiss-cpu==1.12.0
-pinecone==7.3.0
-requests==2.32.5
-PyPDF2==3.0.1
-tiktoken==0.11.0
+# Vector database and search
+pinecone-client>=3.0.0
+sentence-transformers>=2.2.0
+faiss-cpu>=1.7.0
 
-# Azure Storage for PDF downloads
-azure-storage-blob==12.26.0
+# Azure services
+azure-storage-blob>=12.0.0
+azure-core>=1.28.0
 
-# Database and utilities
-werkzeug==3.1.3
-sqlalchemy==2.0.43
-uuid==1.30
+# Document processing
+PyPDF2>=3.0.0
+python-docx>=0.8.11
+openpyxl>=3.1.0
 
-# Additional ML utilities
-scikit-learn==1.7.1
-transformers==4.56.0
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+urllib3>=2.0.0
+
+# Database
+SQLAlchemy>=2.0.0
+
+# Text processing
+nltk>=3.8
+spacy>=3.6.0
+
+# Optional: For advanced text processing
+# transformers>=4.30.0  # Uncomment if needed
+# torch>=2.0.0  # Uncomment if needed
